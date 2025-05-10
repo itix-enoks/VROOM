@@ -83,20 +83,12 @@ def process_frames(prev_gray, curr_gray, curr_color):
 def main():
     picam2 = Picamera2()
 
-    cfg = picam2.create_video_configuration(
-        main={"size": (FRAME_WIDTH, FRAME_HEIGHT), "format": "RGB888"},
-        controls={"FrameRate": OUTPUT_FPS},
-        buffer_count=6
+    fastmode = picam2.sensor_modes[0]
+    cfg = picam2.create_preview_configuration(
+        sensor={'output_size': fastmode['size'], 'bit_depth': fastmode['bit_depth']},
+        controls={"FrameDurationLimits": (8333, 8333)},
     )
     picam2.configure(cfg)
-
-    picam2.set_controls({
-        "FrameDurationLimits": (8333, 8333),
-        "NoiseReductionMode": 0,
-        "AeEnable": False,
-        "AwbEnable": False
-    })
-
     picam2.start()
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
