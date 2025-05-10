@@ -1,0 +1,3 @@
+/home/cisgtud/VROOM/source-code/camera/CMakeFiles/libcamera-demo.dir
+/home/cisgtud/VROOM/source-code/camera/CMakeFiles/edit_cache.dir
+/home/cisgtud/VROOM/source-code/camera/CMakeFiles/rebuild_cache.dir
