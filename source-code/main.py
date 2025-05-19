@@ -3,6 +3,7 @@ import time
 
 import cv2 as cv
 import pantilthat as pth
+import numpy as np
 
 from picamera2 import Picamera2
 from algorithms.background_subtraction import process_frames
@@ -21,11 +22,12 @@ class SharedObject(object):
     is_exit: bool = False
 
 
-def tilt(shared_obj, angle=-10):
+def tilt(shared_obj, angle=-20):
     import pantilthat as pth
     while True:
         if shared_obj.is_exit:
             sys.exit(0)
+        pth.pan(0)
         pth.tilt(angle)
         time.sleep(5e-3)
 
@@ -60,7 +62,7 @@ def process(shared_obj):
 
     try:
         while True:
-            curr_color = picam2.capture_array("main")
+            curr_color = cv.rotate(picam2.capture_array("main"), cv.ROTATE_90_CLOCKWISE)
             curr_gray = cv.cvtColor(curr_color, cv.COLOR_BGR2GRAY)
 
             if prev_gray is None:
