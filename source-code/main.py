@@ -1,8 +1,12 @@
-import cv2 as cv
+import sys
 import time
+
+import cv2 as cv
+import pantilthat as pth
 
 from picamera2 import Picamera2
 from algorithms.background_subtraction import process_frames
+from concurrent.futures import ThreadPoolExecutor
 
 
 FRAME_WIDTH = 1332
@@ -12,7 +16,28 @@ PREVIEW_MAIN_FRAME = False
 PREVIEW_PROC_FRAME = True
 
 
-def main():
+class SharedObject(object):
+    y_measure: float = 1
+    is_exit: bool = False
+
+
+def tilt(shared_obj, angle=-10):
+    import pantilthat as pth
+    while True:
+        if shared_obj.is_exit:
+            sys.exit(0)
+        pth.tilt(angle)
+        time.sleep(5e-3)
+
+
+def run_tasks_in_parallel(tasks):
+    with ThreadPoolExecutor() as executor:
+        running_tasks = [executor.submit(task) for task in tasks]
+        for running_task in running_tasks:
+            running_task.result()
+
+
+def process(shared_obj):
     recording_id = time.strftime('%y%m%d%H%M%S', time.gmtime())
     picam2 = Picamera2()
 
@@ -32,6 +57,7 @@ def main():
     frame_cnt_in_sec = 0
 
     is_one_sec_passed = False
+
     try:
         while True:
             curr_color = picam2.capture_array("main")
@@ -69,11 +95,15 @@ def main():
                 cv.imshow(f'[{recording_id}] [Live] Processed Frame', output)
 
             if cv.waitKey(1) & 0xFF == ord('q'):
+                shared_obj.is_exit = True
                 break
+
     finally:
         picam2.stop()
         cv.destroyAllWindows()
 
 
 if __name__ == "__main__":
-    main()
+    shared_obj = SharedObject()
+    run_tasks_in_parallel([lambda: process(shared_obj), lambda: tilt(shared_obj)])
+    
