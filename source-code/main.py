@@ -1,13 +1,13 @@
 import sys
 import time
-
 import cv2 as cv
 import pantilthat as pth
 import numpy as np
-
-from picamera2 import Picamera2
-from algorithms.background_subtraction import process_frames
+import os
+from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
+from picamera2 import Picamera2
+from algorithms.frame_difference import process_frames
 
 
 FRAME_WIDTH = 1332
@@ -16,14 +16,54 @@ FRAME_HEIGHT = 990
 PREVIEW_MAIN_FRAME = False
 PREVIEW_PROC_FRAME = True
 
+RECORDING_ID = time.strftime('%y%m%d%H%M%S', time.gmtime())
+OUTPUT_DIR = os.path.join("output_frames", RECORDING_ID)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-class SharedObject(object):
+
+class SharedObject:
     y_measure: float = 1
     is_exit: bool = False
+    frame = None
+    frame_buffer = []
+
+
+class CameraStream:
+    def __init__(self, shared_obj, width=1332, height=990):
+        self.shared = shared_obj
+        self.width = width
+        self.height = height
+        self.picam2 = Picamera2()
+        self._configure()
+        self.thread = Thread(target=self._update_frames, daemon=True)
+        self.frame_count = 0
+
+    def _configure(self):
+        fastmode = self.picam2.sensor_modes[0]
+        config = self.picam2.create_preview_configuration(
+            sensor={'output_size': fastmode['size'], 'bit_depth': fastmode['bit_depth']},
+            controls={"FrameDurationLimits": (8333, 8333)}
+        )
+        self.picam2.configure(config)
+
+    def start(self):
+        self.picam2.start()
+        time.sleep(1)
+        self.thread.start()
+
+    def _update_frames(self):
+        while not self.shared.is_exit:
+            frame = cv.cvtColor(self.picam2.capture_array("main"), cv.COLOR_BGR2RGB)
+            rotated = cv.rotate(frame, cv.ROTATE_90_CLOCKWISE)
+            self.shared.frame = rotated
+            self.frame_count += 1
+            self.shared.frame_buffer.append(frame)
+
+    def stop(self):
+        self.picam2.stop()
 
 
 def tilt(shared_obj, angle=-20):
-    import pantilthat as pth
     while True:
         if shared_obj.is_exit:
             sys.exit(0)
@@ -40,40 +80,29 @@ def run_tasks_in_parallel(tasks):
 
 
 def process(shared_obj):
-    recording_id = time.strftime('%y%m%d%H%M%S', time.gmtime())
-    picam2 = Picamera2()
-
-    fastmode = picam2.sensor_modes[0]
-    cfg = picam2.create_preview_configuration(
-        sensor={'output_size': fastmode['size'], 'bit_depth': fastmode['bit_depth']},
-        controls={"FrameDurationLimits": (8333, 8333)}
-    )
-    picam2.configure(cfg)
-    picam2.start()
-
     prev_gray = None
     prev_time = time.time_ns()
     diff_time = 0
-
     frame_per_sec = 0
     frame_cnt_in_sec = 0
-
     is_one_sec_passed = False
+
+    frame_buffer = []
 
     try:
         while True:
-            curr_color = cv.rotate(picam2.capture_array("main"), cv.ROTATE_90_CLOCKWISE)
-            curr_gray = cv.cvtColor(curr_color, cv.COLOR_BGR2GRAY)
+            if shared_obj.frame is None:
+                continue
+            curr_color = shared_obj.frame#.copy()
+            curr_gray = cv.cvtColor(curr_color, cv.COLOR_RGB2GRAY)
 
             if prev_gray is None:
-                output = curr_color.copy()
+                output = curr_color#.copy()
             else:
                 output = process_frames(prev_gray, curr_gray, curr_color)
 
             prev_gray = curr_gray
-
             frame_cnt_in_sec += 1
-
             curr_time = time.time_ns()
             diff_time += (curr_time - prev_time) / 1e6
 
@@ -91,21 +120,27 @@ def process(shared_obj):
             prev_time = curr_time
 
             if PREVIEW_MAIN_FRAME:
-                cv.imshow(f'[{recording_id}] [Live] Actual Frame', curr_color)
+                cv.imshow(f'[{RECORDING_ID}] [Live] Actual Frame', curr_color)
 
             if PREVIEW_PROC_FRAME:
-                cv.imshow(f'[{recording_id}] [Live] Processed Frame', output)
+                cv.imshow(f'[{RECORDING_ID}] [Live] Processed Frame', output)
 
             if cv.waitKey(1) & 0xFF == ord('q'):
                 shared_obj.is_exit = True
+                for i, frame in enumerate(shared_obj.frame_buffer):
+                    filename = os.path.join(OUTPUT_DIR, f"frame_{i:06d}.png")
+                    cv.imwrite(filename, frame)
+
+                print(f"[INFO] Saved {len(shared_obj.frame_buffer)} frames to: {OUTPUT_DIR}")
                 break
 
     finally:
-        picam2.stop()
         cv.destroyAllWindows()
 
 
 if __name__ == "__main__":
     shared_obj = SharedObject()
+    camera = CameraStream(shared_obj)
+    camera.start()
     run_tasks_in_parallel([lambda: process(shared_obj), lambda: tilt(shared_obj)])
-    
+    camera.stop()
