@@ -7,7 +7,8 @@ import os
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
 from picamera2 import Picamera2
-from algorithms.frame_difference import process_frames
+import algorithms.frame_difference as proc_naive
+import algorithms.colored_frame_difference as proc_color
 
 
 FRAME_WIDTH = 1332
@@ -79,6 +80,22 @@ def run_tasks_in_parallel(tasks):
             running_task.result()
 
 
+COLOR_HUES = {
+    "Red": 0,
+    "Green": 60,
+    "Blue": 120,
+    "Cyan": 90,
+    "Magenta": 150,
+    "Yellow": 30,
+    "Amber": 15,
+    "Chartreuse": 45,
+    "Spring Green": 75
+    "Azure": 105,
+    "Violet": 135,
+    "Rose": 165
+}
+
+
 def process(shared_obj):
     prev_gray = None
     prev_time = time.time_ns()
@@ -93,13 +110,13 @@ def process(shared_obj):
         while True:
             if shared_obj.frame is None:
                 continue
-            curr_color = shared_obj.frame#.copy()
-            curr_gray = cv.cvtColor(curr_color, cv.COLOR_RGB2GRAY)
+            curr_color = shared_obj.frame
+            curr_gray = cv.cvtColor(curr_color, cv.COLOR_RGB2HSV)
 
             if prev_gray is None:
-                output = curr_color#.copy()
+                output = curr_color
             else:
-                output = process_frames(prev_gray, curr_gray, curr_color)
+                _, output, _ = proc_color.process_frames(camera_prev_gray, current_gray_frame, current_frame, COLOR_HUES["Rose"], hue_tolerance=10)
 
             prev_gray = curr_gray
             frame_cnt_in_sec += 1
@@ -123,6 +140,7 @@ def process(shared_obj):
                 cv.imshow(f'[{RECORDING_ID}] [Live] Actual Frame', curr_color)
 
             if PREVIEW_PROC_FRAME:
+                output = cv.cvtColor(output, cv.COLOR_RGB2BGR)
                 cv.imshow(f'[{RECORDING_ID}] [Live] Processed Frame', output)
 
             if cv.waitKey(1) & 0xFF == ord('q'):
