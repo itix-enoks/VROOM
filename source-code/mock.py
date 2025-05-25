@@ -63,14 +63,14 @@ class PID:
         now = time.monotonic()
         dt = max(1e-6, min(now - self.prev_time, self.max_dt))
         error = self.setpoint - measurement # Error in pixels
-        
+
         # Proportional term
         P = self.kp * error
-        
+
         # Integral term (accumulate error)
         self.integral += error * dt
         I = self.ki * self.integral
-        
+
         # Derivative term (on measurement, with low-pass filter)
         if self.prev_measurement is None or dt == 0: # dt check for safety
             self.deriv = 0.0
@@ -80,17 +80,17 @@ class PID:
             # Low-pass filter for derivative
             alpha = dt / (self.tau + dt) if (self.tau + dt) > 0 else 1.0 # Avoid division by zero
             self.deriv = alpha * raw_deriv + (1 - alpha) * self.deriv
-            
+
         D = -self.kd * self.deriv # Negative feedback as derivative is on measurement
-        
+
         output_px = P + I + D # Total correction in pixel units
-        
+
         # Save state for next iteration
         self.prev_time = now
         self.prev_measurement = measurement
         self.last_error = error
         self.last_dt = dt
-        
+
         return output_px * self.deg_per_px # Delta degrees
 
     def reset_integral(self):
@@ -113,7 +113,7 @@ def control_camera_tilt(delta_deg_command, pid_controller):
     # delta_deg_command = np.clip(delta_deg_command, -MAX_DELTA_DEG_PER_STEP, MAX_DELTA_DEG_PER_STEP)
 
     prospective_tilt = current_tilt_angle + delta_deg_command
-    
+
     # Anti-windup for servo limits
     if prospective_tilt > SERVO_MAX_ANGLE or prospective_tilt < SERVO_MIN_ANGLE:
         # If saturation occurs, reduce integral to prevent windup
@@ -123,7 +123,7 @@ def control_camera_tilt(delta_deg_command, pid_controller):
         # Here, we're retroactively adjusting based on the last error.
         pid_controller.integral -= pid_controller.last_error * pid_controller.last_dt
 
-    current_tilt_angle -= delta_deg_command 
+    current_tilt_angle -= delta_deg_command
     current_tilt_angle = max(SERVO_MIN_ANGLE, min(SERVO_MAX_ANGLE, current_tilt_angle))
 
     pth.tilt(int(round(current_tilt_angle))) # Standard PanTiltHAT tilt control
@@ -134,22 +134,22 @@ def extract_vertical_roi(frame, current_roi_x_start, current_roi_width):
     frame_h, frame_w = frame.shape[:2]
     x_start = max(0, min(ROI_X_START, frame_w - 1))
     x_end = max(0, min(ROI_X_START + ROI_WIDTH, frame_w))
-    
-    if x_start >= x_end : 
+
+    if x_start >= x_end :
         return np.array([])
-        
+
     return frame[:, x_start:x_end]
 
 
 def calculate_1d_projection(roi_gray):
-    if roi_gray.size == 0 or roi_gray.shape[1] == 0: return np.array([]) 
+    if roi_gray.size == 0 or roi_gray.shape[1] == 0: return np.array([])
     return np.mean(roi_gray, axis=1)
 
 def estimate_camera_motion_1d_correlation(signal_t, signal_t_minus_1):
     if signal_t.size == 0 or signal_t_minus_1.size == 0 or signal_t.size != signal_t_minus_1.size:
         return 0
     if np.all(signal_t == signal_t[0]) or np.all(signal_t_minus_1 == signal_t_minus_1[0]):
-        return 0 
+        return 0
     correlation = correlate(signal_t, signal_t_minus_1, mode='same', method='fft')
     center_index = len(correlation) // 2
     peak_index = np.argmax(correlation)
@@ -165,30 +165,30 @@ def align_1d_signal(signal, delta_y):
 def detect_object_in_diff_1d(diff_signal, threshold_val, current_roi_height):
     if diff_signal.size == 0: return None
     potential_object_pixels = np.where(diff_signal > threshold_val)[0]
-    if len(potential_object_pixels) >= MIN_OBJECT_HEIGHT: 
+    if len(potential_object_pixels) >= MIN_OBJECT_HEIGHT:
         y_min = np.min(potential_object_pixels)
         y_max = np.max(potential_object_pixels)
-        if (y_max - y_min + 1) < (current_roi_height / 1.5) : 
+        if (y_max - y_min + 1) < (current_roi_height / 1.5) :
              return (y_min, y_max)
     return None
 
 # --- Main Loop ---
 if __name__ == "__main__":
     picam2 = Picamera2()
-    
+
     sensor_modes = picam2.sensor_modes
     if not sensor_modes:
         print("Error: No sensor modes available!")
         exit()
-    fastmode = sensor_modes[0] 
-    
+    fastmode = sensor_modes[0]
+
     capture_width, capture_height = fastmode['size']
     effective_frame_width = capture_height
     effective_frame_height = capture_width
 
-    ROI_HEIGHT = effective_frame_height 
+    ROI_HEIGHT = effective_frame_height
     TARGET_Y_IN_ROI = ROI_HEIGHT // 2
-    
+
     vfov_rad = 2 * math.atan((ROI_HEIGHT * PIXEL_SIZE_MM) / (2 * FOCAL_LENGTH_MM)) if FOCAL_LENGTH_MM > 0 else math.pi / 2
     vfov_deg = math.degrees(vfov_rad)
     DEG_PER_PX = (vfov_deg / ROI_HEIGHT) if ROI_HEIGHT > 0 else 0.03
@@ -200,25 +200,25 @@ if __name__ == "__main__":
 
     camera_config = picam2.create_preview_configuration(
         sensor={'output_size': fastmode['size'], 'bit_depth': fastmode['bit_depth']},
-        main={"format": "BGR888", "size": fastmode['size']}, 
-        controls={"FrameDurationLimits": (8333, 8333)} 
+        main={"format": "BGR888", "size": fastmode['size']},
+        controls={"FrameDurationLimits": (8333, 8333)}
     )
     picam2.configure(camera_config)
     picam2.start()
-    time.sleep(1.0) 
+    time.sleep(1.0)
 
     pid_controller = PID(kp=PID_KP, ki=PID_KI, kd=PID_KD,
                          setpoint=TARGET_Y_IN_ROI,
                          deg_per_px=DEG_PER_PX,
                          tau=PID_TAU, max_dt=PID_MAX_DT)
 
-    pth.servo_enable(TILT_SERVO_CHANNEL, True) 
-    pth.tilt(int(round(current_tilt_angle))) 
+    pth.servo_enable(TILT_SERVO_CHANNEL, True)
+    pth.tilt(int(round(current_tilt_angle)))
 
     signal_t_minus_1 = None
     running = True
-    
-    cv2.namedWindow("Live View with Tracking", cv2.WINDOW_NORMAL) 
+
+    cv2.namedWindow("Live View with Tracking", cv2.WINDOW_NORMAL)
 
     print("Starting main loop. Press 'q' in the Live View window or Ctrl+C in console to quit.")
     print(f"Picamera2 configured for ~{1e6/8333:.0f} FPS (requested).")
@@ -236,8 +236,8 @@ if __name__ == "__main__":
 
     try:
         while running:
-            frame_t_raw_bgr = picam2.capture_array("main") 
-            if frame_t_raw_bgr is None: 
+            frame_t_raw_bgr = picam2.capture_array("main")
+            if frame_t_raw_bgr is None:
                 print("Warning: Failed to capture frame.")
                 time.sleep(0.01)
                 continue
@@ -253,18 +253,18 @@ if __name__ == "__main__":
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord('q'):
                     running = False
-                time.sleep(0.01) 
+                time.sleep(0.01)
                 continue
 
             signal_t = calculate_1d_projection(roi_t_gray)
-            
+
             delta_y_cam_visual = 0
             if signal_t_minus_1 is not None and signal_t.size == signal_t_minus_1.size:
                 delta_y_cam_visual = estimate_camera_motion_1d_correlation(signal_t, signal_t_minus_1)
-            
+
             delta_y_cam = delta_y_cam_visual
 
-            object_bounds_y = None 
+            object_bounds_y = None
             y_object_current_for_pid = None
 
             if signal_t_minus_1 is not None and signal_t.size == signal_t_minus_1.size:
@@ -276,13 +276,13 @@ if __name__ == "__main__":
                 frames_object_not_detected = 0 # Reset counter
                 y_min, y_max = object_bounds_y
                 y_object_current_for_pid = (y_min + y_max) // 2
-                delta_angle_output = pid_controller.update(y_object_current_for_pid) 
+                delta_angle_output = pid_controller.update(y_object_current_for_pid)
                 control_camera_tilt(delta_angle_output, pid_controller)
-                
+
                 draw_x_start = max(0, min(ROI_X_START, frame_t_bgr.shape[1] -1))
                 draw_x_end = max(0, min(ROI_X_START + ROI_WIDTH, frame_t_bgr.shape[1]))
                 if draw_x_start < draw_x_end:
-                    cv2.rectangle(frame_t_bgr, (draw_x_start, y_min), (draw_x_end, y_max), (0, 0, 255), 2) 
+                    cv2.rectangle(frame_t_bgr, (draw_x_start, y_min), (draw_x_end, y_max), (0, 0, 255), 2)
             else:
                 # OBJECT NOT DETECTED
                 frames_object_not_detected += 1
@@ -295,14 +295,14 @@ if __name__ == "__main__":
                 # if current_tilt_angle != INITIAL_TILT_ANGLE:
                 #     centering_error = INITIAL_TILT_ANGLE - current_tilt_angle
                 #     # Small proportional control to slowly re-center
-                #     centering_adjustment = np.clip(centering_error * 0.01, -0.1, 0.1) 
+                #     centering_adjustment = np.clip(centering_error * 0.01, -0.1, 0.1)
                 #     control_camera_tilt(centering_adjustment, pid_controller) # Careful with pid_controller here
-                pass 
-            
+                pass
+
             signal_t_minus_1 = signal_t.copy()
             loop_count +=1
 
-            if (time.monotonic() - fps_calc_start_time) >= 1.0: 
+            if (time.monotonic() - fps_calc_start_time) >= 1.0:
                 display_fps = loop_count / (time.monotonic() - fps_calc_start_time)
                 loop_count = 0
                 fps_calc_start_time = time.monotonic()
@@ -311,7 +311,7 @@ if __name__ == "__main__":
             cv2.putText(frame_t_bgr, f"Tilt: {current_tilt_angle:.1f}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             if object_bounds_y is None:
                  cv2.putText(frame_t_bgr, "LOST", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-            
+
             draw_roi_x_start = max(0, min(ROI_X_START, frame_t_bgr.shape[1] - 1))
             draw_roi_width_actual = max(0, min(ROI_WIDTH, frame_t_bgr.shape[1] - draw_roi_x_start))
             if draw_roi_width_actual > 0:
@@ -330,5 +330,5 @@ if __name__ == "__main__":
         pth.servo_enable(TILT_SERVO_CHANNEL, False)
         picam2.stop()
         picam2.close()
-        cv2.destroyAllWindows() 
+        cv2.destroyAllWindows()
         print("Exited.")
