@@ -1,7 +1,7 @@
 import cv2 as cv
 import numpy as np
 
-def process_frames(prev_gray, curr_gray, curr_color, target_hue, hue_tolerance=10):
+def process_frames(prev_gray, curr_gray, curr_color, target_hue, hue_tolerance, s_min, s_max, v_min, v_max):
     # Convert the current color frame to HSV
     hsv = cv.cvtColor(curr_color, cv.COLOR_BGR2HSV)
 
@@ -9,8 +9,8 @@ def process_frames(prev_gray, curr_gray, curr_color, target_hue, hue_tolerance=1
     # cv.imshow("HSV Image", hsv)  # Uncomment to see the HSV image
 
     # Define the target color range in HSV (you can adjust the tolerance if needed)
-    lower_bound = np.array([target_hue - hue_tolerance, 50, 50])  # Lower bound for target color
-    upper_bound = np.array([target_hue + hue_tolerance, 255, 255])  # Upper bound for target color
+    lower_bound = np.array([target_hue - hue_tolerance, s_min, v_min])  # Lower bound for target color
+    upper_bound = np.array([target_hue + hue_tolerance, s_max, v_max])  # Upper bound for target color
 
     # Create a mask for the target color (binary image)
     mask = cv.inRange(hsv, lower_bound, upper_bound)
@@ -51,7 +51,7 @@ def process_frames(prev_gray, curr_gray, curr_color, target_hue, hue_tolerance=1
 
     x1, y1, x2, y2 = keep[0]
     y_measured = (y1 + y2) / 2
-    cv.rectangle(output, (x1, y1), (x2, y2), (0, 0, 255), 2)  # Draw red rectangle for the detected object
+    output = cv.rectangle(output, (x1, y1), (x2, y2), (0, 0, 255), 2)  # Draw red rectangle for the detected object
 
     return y_measured, output, mask # Output is just image with bounded rectangles for previewing purposes
 
