@@ -1,0 +1,15 @@
+h_range     = range(0, 180, 1)
+h_tol_range = range(0, 90, 1)
+s           = [0, 255]
+v           = [0, 255]
+
+C:\Users\enoks\Programming\vroom (master -> origin)
+(env) λ env\Scripts\python.exe source-code\train.py
+Final best Params for instance 35mm/1.1 (hue, hue_tolerance): (127, 2), with cost: 1.0
+Final best Params for instance 35mm/2.2 (hue, hue_tolerance): (55, 5), with cost: 4.0
+Final best Params for instance 25mm/2.1 (hue, hue_tolerance): (158, 21), with cost: 42.25
+Final best Params for instance 25mm/1.2 (hue, hue_tolerance): (97, 80), with cost: 30.25
+Final best Params for instance 25mm/2.2 (hue, hue_tolerance): (68, 1), with cost: 12.25
+Final best Params for instance 25mm/1.3 (hue, hue_tolerance): (106, 4), with cost: 1.0
+Final best Params for instance 35mm/2.1 (hue, hue_tolerance): (33, 1), with cost: 144.0
+Final best Params for instance 25mm/1.1 (hue, hue_tolerance): (23, 3), with cost: 0.25

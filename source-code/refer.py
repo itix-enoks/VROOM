@@ -4,16 +4,21 @@ import cv2
 import time
 import json
 
-from algorithms.colored_frame_difference import process_frames
+from algorithms.color_filter import process_frames
 
 
 def main():
     images_dir = "./training-set/moving-camera/"
     
     instance_reference_xys_map = {
-        "35mm/1.1": [], "35mm/2.1": [], "35mm/2.2": [],
-        "25mm/1.1": [], "25mm/1.2": [], "25mm/1.3": [],
-        "25mm/2.1": [], "25mm/2.2": []
+        # "35mm/1.1": [], 
+        # "35mm/2.1": [], 
+        "35mm/2.2": [],
+        # "25mm/1.1": [], 
+        # "25mm/1.2": [], 
+        # "25mm/1.3": [],
+        # "25mm/2.1": [], 
+        # "25mm/2.2": []
     }
 
     for inst_idx, (instance, xys) in enumerate(instance_reference_xys_map.items(), 1):
